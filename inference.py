@@ -11,14 +11,18 @@ import platform
 parser = argparse.ArgumentParser(description='Inference code to lip-sync videos in the wild using Wav2Lip models')
 
 parser.add_argument('--checkpoint_path', type=str, 
-					help='Name of saved checkpoint to load weights from', required=True)
+					help='Name of saved checkpoint to load weights from', required=True) 
 
+
+#required -> 필수
+###################################################################
 parser.add_argument('--face', type=str, 
 					help='Filepath of video/image that contains faces to use', required=True)
 parser.add_argument('--audio', type=str, 
 					help='Filepath of video/audio file to use as raw audio source', required=True)
 parser.add_argument('--outfile', type=str, help='Video path to save result. See default for an e.g.', 
 								default='results/result_voice.mp4')
+###################################################################
 
 parser.add_argument('--static', type=bool, 
 					help='If True, then use only first video frame for inference', default=False)
@@ -179,50 +183,84 @@ def load_model(path):
 	return model.eval()
 
 def main():
+  
+  #args.face (=input_vid) 파일이 없을 경우
+  # 0.1 Video to Frame
 	if not os.path.isfile(args.face):
 		raise ValueError('--face argument must be a valid path to video/image file')
-
+  
+  # jpg, png, jpeg인 경우, full read 및 세팅
+  # 0.2 Video to Frame
 	elif args.face.split('.')[1] in ['jpg', 'png', 'jpeg']:
 		full_frames = [cv2.imread(args.face)]
 		fps = args.fps
 
+  #video인 경우, full read 및 fps 세팅 # General case
+  # 0.3 Video to Frame
 	else:
-		video_stream = cv2.VideoCapture(args.face)
-		fps = video_stream.get(cv2.CAP_PROP_FPS)
+		video_stream = cv2.VideoCapture(args.face) # video read
+		fps = video_stream.get(cv2.CAP_PROP_FPS) #fps set
 
 		print('Reading video frames...')
 
-		full_frames = []
+		full_frames = [] # defined full_frame array
+
+    #모든 프레임에 설정 적용
+    # 1. Frame adjustment
 		while 1:
-			still_reading, frame = video_stream.read()
-			if not still_reading:
-				video_stream.release()
+      #still_reading은 running state를 나타내는 bool 변수, frame은 실제 image
+      #video_stream은 위에서 받은 cv2.VideoCapture object
+			still_reading, frame = video_stream.read() 
+
+      #break point
+			if not still_reading: #비디오를 읽는중이 아니라면,
+				video_stream.release() # open된 비디오 파일 혹은 영상장치를 닫음
 				break
+      #resize_factor는 해상도를 줄일 때 사용, default = 1임.
+      #1보다 큰 값이 들어오는 경우는 480, 720p 와 같은 pixel 단위의 값을 입력하고, 이를 기준으로 해상도를 조절함.
+      #원 연구자가 권장하는 값은 480, 720임.
 			if args.resize_factor > 1:
 				frame = cv2.resize(frame, (frame.shape[1]//args.resize_factor, frame.shape[0]//args.resize_factor))
 
+      #rotate는 bool 변수이고, 휴대전화에서 찍은 영상이나 사진을 90' 회전하는데 사용
 			if args.rotate:
 				frame = cv2.rotate(frame, cv2.cv2.ROTATE_90_CLOCKWISE)
 
+      #비디오를 더 작은 영역으로 자를 때 사용,
+      #  default=[0, -1, 0, -1] 의 값을 갖고, -1을 기준점으로 비율로 계산.
+      # 여러 인물이 등장하거나, 위에서 rotate를 실행시켜 화면을 조정하고 싶을 때 사용
 			y1, y2, x1, x2 = args.crop
 			if x2 == -1: x2 = frame.shape[1]
 			if y2 == -1: y2 = frame.shape[0]
 
+      #위에서 조절한 size로 frame 보관
 			frame = frame[y1:y2, x1:x2]
 
+      # 프레임 저장
 			full_frames.append(frame)
-
+  
+  
+  #frame 조절이 끝난경우,
 	print ("Number of frames available for inference: "+str(len(full_frames)))
 
-	if not args.audio.endswith('.wav'):
+	# audio라는 arg에 받은 파일이 .wav로 끝나지 않은 경우
+  if not args.audio.endswith('.wav'):
 		print('Extracting raw audio...')
 		command = 'ffmpeg -y -i {} -strict -2 {}'.format(args.audio, 'temp/temp.wav')
 
+    #subprocess로 command를 동작시킴.
+    # 20210321 외부에서 가져오는 것인데, 이의 출처처를 모르겠음. ffmpeg에 비밀이 있을 것으로 생각
 		subprocess.call(command, shell=True)
 		args.audio = 'temp/temp.wav'
-
-	wav = audio.load_wav(args.audio, 16000)
-	mel = audio.melspectrogram(wav)
+    
+  #2. load audio
+  # pre: audio.wav 파일과 sample rate를 입력받음
+  # post: 16000의 sample rate 및 [-1 ~ 1]의 정규화된 범위를 가진 데이터로 저장
+	wav = audio.load_wav(args.audio, 16000) #function call 
+  
+  #3. audio processing
+  # filtering하고, scaling, normalization한 audio signal을 반환.
+	mel = audio.melspectrogram(wav) #function call
 	print(mel.shape)
 
 	if np.isnan(mel.reshape(-1)).sum() > 0:
@@ -244,18 +282,22 @@ def main():
 	full_frames = full_frames[:len(mel_chunks)]
 
 	batch_size = args.wav2lip_batch_size
-	gen = datagen(full_frames.copy(), mel_chunks)
+  
+  #4. data gen
+	gen = datagen(full_frames.copy(), mel_chunks) #function call
 
 	for i, (img_batch, mel_batch, frames, coords) in enumerate(tqdm(gen, 
 											total=int(np.ceil(float(len(mel_chunks))/batch_size)))):
 		if i == 0:
-			model = load_model(args.checkpoint_path)
+      #6. load model
+			model = load_model(args.checkpoint_path) #function call
 			print ("Model loaded")
 
 			frame_h, frame_w = full_frames[0].shape[:-1]
 			out = cv2.VideoWriter('temp/result.avi', 
 									cv2.VideoWriter_fourcc(*'DIVX'), fps, (frame_w, frame_h))
 
+    #make tensor
 		img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(device)
 		mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(device)
 
