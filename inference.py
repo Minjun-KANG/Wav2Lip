@@ -200,7 +200,7 @@ def main():
 	else:
 		video_stream = cv2.VideoCapture(args.face) # video read
 		fps = video_stream.get(cv2.CAP_PROP_FPS) #fps set
-
+		
 		print('Reading video frames...')
 
 		full_frames = [] # defined full_frame array
@@ -238,13 +238,11 @@ def main():
 
       # 프레임 저장
 			full_frames.append(frame)
-  
-  
-  #frame 조절이 끝난경우,
+
 	print ("Number of frames available for inference: "+str(len(full_frames)))
 
 	# audio라는 arg에 받은 파일이 .wav로 끝나지 않은 경우
-  if not args.audio.endswith('.wav'):
+	if not args.audio.endswith('.wav'):
 		print('Extracting raw audio...')
 		command = 'ffmpeg -y -i {} -strict -2 {}'.format(args.audio, 'temp/temp.wav')
 
