@@ -1,7 +1,7 @@
 from os.path import dirname, join, basename, isfile
 from tqdm import tqdm
 
-from models import SyncNet_color as SyncNet
+from models import SyncNet_color as SyncNet #2D covolution 연산을 하기 위한, 라이브러리 ./Wav2Lip/models/syncnet.py 에 정의
 import audio
 
 import torch
@@ -35,24 +35,28 @@ syncnet_T = 5
 syncnet_mel_step_size = 16
 
 class Dataset(object):
+    #해당 class가 시작하자마자, data_root에 있는 video를 frame으로 split하여, all_vidoes에 넣음.
     def __init__(self, split):
         self.all_videos = get_image_list(args.data_root, split)
 
+    #frame의 이름을 얻고, id로 반환
     def get_frame_id(self, frame):
         return int(basename(frame).split('.')[0])
 
+    #start_id와, vid_name을 얻고, start id ~ start id + 5 까지, .jpg 형태로바꿔, 이름이 바뀐 프레임들을 리턴
     def get_window(self, start_frame):
         start_id = self.get_frame_id(start_frame)
         vidname = dirname(start_frame)
 
         window_fnames = []
-        for frame_id in range(start_id, start_id + syncnet_T):
-            frame = join(vidname, '{}.jpg'.format(frame_id))
+        for frame_id in range(start_id, start_id + syncnet_T): # startid ~ startid + 5 까지 진행
+            frame = join(vidname, '{}.jpg'.format(frame_id)) #.jpg형태로 이름 바꿈
             if not isfile(frame):
                 return None
-            window_fnames.append(frame)
-        return window_fnames
+            window_fnames.append(frame) # window_frame에 추가
+        return window_fnames #리턴
 
+    #프레임의 시작을 fps만큼 자른 후, mel_step_size인 16만큼 더해서 한 단위로 만든 후 리턴
     def crop_audio_window(self, spec, start_frame):
         # num_frames = (T x hop_size * fps) / sample_rate
         start_frame_num = self.get_frame_id(start_frame)
@@ -68,24 +72,33 @@ class Dataset(object):
 
     def __getitem__(self, idx):
         while 1:
+            # 0~frame의 길이만큼중에 랜덤한 값을 index로 만듬
             idx = random.randint(0, len(self.all_videos) - 1)
+            # all_videos[idx]를 vidname에 대입
             vidname = self.all_videos[idx]
 
-            img_names = list(glob(join(vidname, '*.jpg')))
+            #img name jpg파일 리스트를 img_names에 대입
+            img_names = list(glob(join(vidname, '*.jpg'))) #vidname에 jpg를 합치고, glob 함
+            
+            #len이 15보다 작거나 같으면, 건너뜀
             if len(img_names) <= 3 * syncnet_T:
                 continue
+            # 15보다 클 때만 작동함.
+            # 두 다른 이미지를 img_name과 wrong_img_name에 대입
             img_name = random.choice(img_names)
             wrong_img_name = random.choice(img_names)
             while wrong_img_name == img_name:
                 wrong_img_name = random.choice(img_names)
 
+            #랜덤으로 y에 값을 채우고, chosen에 그에 맞는 img를 대입,
             if random.choice([True, False]):
-                y = torch.ones(1).float()
+                y = torch.ones(1).float() #스칼라 값 1로 채워진 텐서를 변수 인수의 사이즈 로 정의 된 모양 반환 torch.one()
                 chosen = img_name
             else:
-                y = torch.zeros(1).float()
+                y = torch.zeros(1).float() #스칼라 값 제로
                 chosen = wrong_img_name
 
+            #start_id와, vid_name을 얻고, chosen ~ Chosen + 5 까지, .jpg 형태로바꿔, 이름이 바뀐 프레임들을 리턴
             window_fnames = self.get_window(chosen)
             if window_fnames is None:
                 continue
@@ -93,20 +106,22 @@ class Dataset(object):
             window = []
             all_read = True
             for fname in window_fnames:
-                img = cv2.imread(fname)
+                img = cv2.imread(fname) #cv2를 이용해, 프레임을 읽음
                 if img is None:
                     all_read = False
                     break
-                try:
+                try: #resize
                     img = cv2.resize(img, (hparams.img_size, hparams.img_size))
                 except Exception as e:
                     all_read = False
                     break
 
-                window.append(img)
+                window.append(img) #window 변수에 추가
 
+            # all read가 false면 건너뜀
             if not all_read: continue
 
+            #wav 파일 조절 및 melspectogram으로 변환
             try:
                 wavpath = join(vidname, "audio.wav")
                 wav = audio.load_wav(wavpath, hparams.sample_rate)
@@ -128,7 +143,7 @@ class Dataset(object):
             x = torch.FloatTensor(x)
             mel = torch.FloatTensor(mel.T).unsqueeze(0)
 
-            return x, mel, y
+            return x, mel, y #tensor x와, mel chunck mel, y를 반환
 
 logloss = nn.BCELoss()
 def cosine_loss(a, v, y):
@@ -243,36 +258,46 @@ def load_checkpoint(path, model, optimizer, reset_optimizer=False):
 
     return model
 
+# 파일 시작 지점
 if __name__ == "__main__":
+    # check point를 불러옴
     checkpoint_dir = args.checkpoint_dir
     checkpoint_path = args.checkpoint_path
 
+    # directory가 존재하지 않는다면, 만듦.
     if not os.path.exists(checkpoint_dir): os.mkdir(checkpoint_dir)
 
     # Dataset and Dataloader setup
     train_dataset = Dataset('train')
     test_dataset = Dataset('val')
 
+    # train_data를 loader함. data_utils.DataLoader은 torch 라이브러리에 있는 데이타 로드 함수임.
+    # train_data_loader에는 모델을 업그레이드 시킬 수 있는, 훈련 데이터가 들어감.
     train_data_loader = data_utils.DataLoader(
         train_dataset, batch_size=hparams.syncnet_batch_size, shuffle=True,
         num_workers=hparams.num_workers)
 
+    # test_data_loader에는 업그레이드를 잘했는지 평가할 수 있는 테스트 데이터가 들어감
     test_data_loader = data_utils.DataLoader(
         test_dataset, batch_size=hparams.syncnet_batch_size,
         num_workers=8)
 
+    # 빠른 훈련을 위해 torch에 device로 장치를 넘김
     device = torch.device("cuda" if use_cuda else "cpu")
 
-    # Model
+    # Model을 들어온 프레임의 순서대로 2D convolution 연산 함. 이 때, device를 자원으로 사용.
     model = SyncNet().to(device)
     print('total trainable params {}'.format(sum(p.numel() for p in model.parameters() if p.requires_grad)))
 
+    #경사하강법 중, Adam이라는 방법을 사용하여 최적화 객체를 구성.
     optimizer = optim.Adam([p for p in model.parameters() if p.requires_grad],
                            lr=hparams.syncnet_lr)
-
+    
+    #checkpoint_path가 없다면,
     if checkpoint_path is not None:
         load_checkpoint(checkpoint_path, model, optimizer, reset_optimizer=False)
 
+    #train을 호출하고 끝. 모든 정보를 train 함수로 넘김.
     train(device, model, train_data_loader, test_data_loader, optimizer,
           checkpoint_dir=checkpoint_dir,
           checkpoint_interval=hparams.syncnet_checkpoint_interval,
