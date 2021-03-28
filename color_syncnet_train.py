@@ -146,12 +146,14 @@ class Dataset(object):
             return x, mel, y #tensor x와, mel chunck mel, y를 반환
 
 logloss = nn.BCELoss()
+#cosine loss 반환
 def cosine_loss(a, v, y):
     d = nn.functional.cosine_similarity(a, v)
     loss = logloss(d.unsqueeze(1), y)
 
     return loss
 
+#evaluation을 진행하고, model을 save
 def train(device, model, train_data_loader, test_data_loader, optimizer,
           checkpoint_dir=None, checkpoint_interval=None, nepochs=None):
 
@@ -193,6 +195,7 @@ def train(device, model, train_data_loader, test_data_loader, optimizer,
 
         global_epoch += 1
 
+#void function, console에 loss를 출력
 def eval_model(test_data_loader, global_step, device, model, checkpoint_dir):
     eval_steps = 1400
     print('Evaluating for {} steps'.format(eval_steps))
@@ -219,7 +222,7 @@ def eval_model(test_data_loader, global_step, device, model, checkpoint_dir):
         print(averaged_loss)
 
         return
-
+# 저장
 def save_checkpoint(model, optimizer, step, checkpoint_dir, epoch):
 
     checkpoint_path = join(
@@ -233,6 +236,7 @@ def save_checkpoint(model, optimizer, step, checkpoint_dir, epoch):
     }, checkpoint_path)
     print("Saved checkpoint:", checkpoint_path)
 
+#단순 로드
 def _load(checkpoint_path):
     if use_cuda:
         checkpoint = torch.load(checkpoint_path)
@@ -241,6 +245,7 @@ def _load(checkpoint_path):
                                 map_location=lambda storage, loc: storage)
     return checkpoint
 
+#로드 및 epoch, step 설정
 def load_checkpoint(path, model, optimizer, reset_optimizer=False):
     global global_step
     global global_epoch
