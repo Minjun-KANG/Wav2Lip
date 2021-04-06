@@ -66,11 +66,11 @@ def melspectrogram(wav):
     #수학적인 연산을 진행함
     #S는linear to mel 에서 어떤 처리를 한 signal을 넘기고, 이를 증폭
     #3.2 audio scaling
-    S = _amp_to_db(_linear_to_mel(np.abs(D))) - hp.ref_level_db #function call (amp_to_db), function call (_linear_to_mel)
+    S = _amp_to_db(_linear_to_mel(np.abs(D))) - hp.ref_level_db #function call (amp_to_db), function call (_linear_to_mel) # 20
     
     ############################################
     #3.3 audio normalization
-    if hp.signal_normalization:
+    if hp.signal_normalization: # True
         return _normalize(S) #function call (normalize)
     return S
 
@@ -143,8 +143,14 @@ def _db_to_amp(x):
     return np.power(10.0, (x) * 0.05)
 
 def _normalize(S):
+    #melspectogram을 사전 정의된 정규화 방법으로 정규화 할 경우,
     if hp.allow_clipping_in_normalization:
-        if hp.symmetric_mels:
+        if hp.symmetric_mels:#true
+            #hyper parameter의 값을 바꾸지 않는 이상, 여기서 리턴함. -4, 4의 구간의 값으로 정규화
+            #clip(array, min, max)
+            # array = (2 * hp.max_abs_value) * ((S - hp.min_level_db) / (-hp.min_level_db)) - hp.max_abs_value
+            # min = -hp.max_abs_value = -4
+            # max = hp.max_abs_value = 4
             return np.clip((2 * hp.max_abs_value) * ((S - hp.min_level_db) / (-hp.min_level_db)) - hp.max_abs_value,
                            -hp.max_abs_value, hp.max_abs_value)
         else:
