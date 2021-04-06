@@ -162,12 +162,14 @@ def train(device, model, train_data_loader, test_data_loader, optimizer,
     
     while global_epoch < nepochs:
         running_loss = 0.
+        #진행 바 표시 tadm
         prog_bar = tqdm(enumerate(train_data_loader))
         for step, (x, mel, y) in prog_bar:
             model.train()
             optimizer.zero_grad()
 
             # Transform data to CUDA device
+            # cosine loss를 계산하기위한 필요 변수,
             x = x.to(device)
 
             mel = mel.to(device)
@@ -175,7 +177,10 @@ def train(device, model, train_data_loader, test_data_loader, optimizer,
             a, v = model(mel, x)
             y = y.to(device)
 
+            #cosine loss 계산
             loss = cosine_loss(a, v, y)
+
+            #loss object, back propagation(역전파)를 통해 손실을 줄임.
             loss.backward()
             optimizer.step()
 
@@ -183,12 +188,16 @@ def train(device, model, train_data_loader, test_data_loader, optimizer,
             cur_session_steps = global_step - resumed_step
             running_loss += loss.item()
 
+            # checkpoint_interval=3000,
             if global_step == 1 or global_step % checkpoint_interval == 0:
+                #3000번 마다 저장
                 save_checkpoint(
                     model, optimizer, global_step, checkpoint_dir, global_epoch)
 
+            #syncnet_eval_interval=10000,
             if global_step % hparams.syncnet_eval_interval == 0:
                 with torch.no_grad():
+                    #횟수 10000번에, 출력하고 종료
                     eval_model(test_data_loader, global_step, device, model, checkpoint_dir)
 
             prog_bar.set_description('Loss: {}'.format(running_loss / (step + 1)))
@@ -263,7 +272,7 @@ def load_checkpoint(path, model, optimizer, reset_optimizer=False):
 
     return model
 
-# 파일 시작 지점
+# 만약 이 파일을 직접 실행한다면,
 if __name__ == "__main__":
     # check point를 불러옴
     checkpoint_dir = args.checkpoint_dir
@@ -282,7 +291,8 @@ if __name__ == "__main__":
         train_dataset, batch_size=hparams.syncnet_batch_size, shuffle=True,
         num_workers=hparams.num_workers)
 
-    # test_data_loader에는 업그레이드를 잘했는지 평가할 수 있는 테스트 데이터가 들어감
+    # test_data_loader에는 업그레이드를 잘했지 평가할 수 있는 테스트 데이터가 들어감
+    # DataLoader(dataset, batch_size = 64, processor의 개수 = 8 )
     test_data_loader = data_utils.DataLoader(
         test_dataset, batch_size=hparams.syncnet_batch_size,
         num_workers=8)
