@@ -40,23 +40,26 @@ syncnet_T = 5
 syncnet_mel_step_size = 16
 
 class Dataset(object):
+    #해당 class가 시작하자마자, data_root에 있는 video를 frame으로 split하여, all_vidoes에 넣음.
     def __init__(self, split):
         self.all_videos = get_image_list(args.data_root, split)
 
+    #frame의 이름을 얻고, id로 반환
     def get_frame_id(self, frame):
         return int(basename(frame).split('.')[0])
 
+    #start_id와, vid_name을 얻고, start id ~ start id + 5 까지, .jpg 형태로바꿔, 이름이 바뀐 프레임들을 리턴
     def get_window(self, start_frame):
         start_id = self.get_frame_id(start_frame)
         vidname = dirname(start_frame)
 
         window_fnames = []
-        for frame_id in range(start_id, start_id + syncnet_T):
-            frame = join(vidname, '{}.jpg'.format(frame_id))
+        for frame_id in range(start_id, start_id + syncnet_T): # startid ~ startid + 5 까지 진행
+            frame = join(vidname, '{}.jpg'.format(frame_id)) #.jpg형태로 이름 바꿈
             if not isfile(frame):
                 return None
-            window_fnames.append(frame)
-        return window_fnames
+            window_fnames.append(frame)  # window_frame에 추가
+        return window_fnames #리턴
 
     def read_window(self, window_fnames):
         if window_fnames is None: return None
@@ -74,6 +77,7 @@ class Dataset(object):
 
         return window
 
+    #프레임의 시작을 fps만큼 자른 후, mel_step_size인 16만큼 더해서 한 단위로 만든 후 리턴
     def crop_audio_window(self, spec, start_frame):
         if type(start_frame) == int:
             start_frame_num = start_frame
@@ -395,23 +399,29 @@ def load_checkpoint(path, model, optimizer, reset_optimizer=False, overwrite_glo
     return model
 
 if __name__ == "__main__":
+    # check point를 불러옴
     checkpoint_dir = args.checkpoint_dir
 
     # Dataset and Dataloader setup
     train_dataset = Dataset('train')
     test_dataset = Dataset('val')
 
+    # train_data를 loader함. data_utils.DataLoader은 torch 라이브러리에 있는 데이타 로드 함수임.
+    # train_data_loader에는 모델을 업그레이드 시킬 수 있는, 훈련 데이터가 들어감.
     train_data_loader = data_utils.DataLoader(
         train_dataset, batch_size=hparams.batch_size, shuffle=True,
         num_workers=hparams.num_workers)
 
+    # test_data_loader에는 업그레이드를 잘했지 평가할 수 있는 테스트 데이터가 들어감
+    # DataLoader(dataset, batch_size = 64, processor의 개수 = 8 )
     test_data_loader = data_utils.DataLoader(
         test_dataset, batch_size=hparams.batch_size,
         num_workers=4)
 
+    # 빠른 훈련을 위해 torch에 device로 장치를 넘김
     device = torch.device("cuda" if use_cuda else "cpu")
 
-     # Model
+    #이 부분만 color_syncnet_train.py와 다름.
     model = Wav2Lip().to(device)
     disc = Wav2Lip_disc_qual().to(device)
 
